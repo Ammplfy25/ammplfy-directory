@@ -11,16 +11,6 @@ import SubmitPage from './pages/SubmitPage'
 import BlogPage from './pages/BlogPage'
 import PostPage from './pages/PostPage'
 
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-gray-700 mb-2">{title}</h1>
-        <p className="text-gray-400">Coming soon.</p>
-      </div>
-    </div>
-  )
-}
 
 function PublicLayout({ children }: { children: React.ReactNode }) {
   return (

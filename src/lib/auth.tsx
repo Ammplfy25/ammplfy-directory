@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .select('role')
       .eq('id', uid)
       .single()
-    setIsAdmin(data?.role === 'admin')
+    setIsAdmin((data as { role: string } | null)?.role === 'admin')
     setLoading(false)
   }
 
