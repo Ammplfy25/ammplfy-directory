@@ -10,6 +10,8 @@ import AdminPage from './pages/AdminPage'
 import SubmitPage from './pages/SubmitPage'
 import BlogPage from './pages/BlogPage'
 import PostPage from './pages/PostPage'
+import AuthPage from './pages/AuthPage'
+import DashboardPage from './pages/DashboardPage'
 
 
 function PublicLayout({ children }: { children: React.ReactNode }) {
@@ -33,12 +35,25 @@ export default function App() {
         <Route path="/blog" element={<PublicLayout><BlogPage /></PublicLayout>} />
         <Route path="/blog/:slug" element={<PublicLayout><PostPage /></PublicLayout>} />
 
+        {/* Auth */}
+        <Route path="/signin" element={<AuthPage />} />
+
+        {/* Owner dashboard */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Admin routes — no public header */}
         <Route path="/admin/login" element={<LoginPage />} />
         <Route
           path="/admin"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requireAdmin>
               <AdminPage />
             </ProtectedRoute>
           }

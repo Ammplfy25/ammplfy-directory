@@ -1,7 +1,12 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 
-export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
+interface Props {
+  children: React.ReactNode
+  requireAdmin?: boolean
+}
+
+export default function ProtectedRoute({ children, requireAdmin = false }: Props) {
   const { session, isAdmin, loading } = useAuth()
 
   if (loading) {
@@ -12,8 +17,8 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     )
   }
 
-  if (!session) return <Navigate to="/admin/login" replace />
-  if (!isAdmin) return <Navigate to="/" replace />
+  if (!session) return <Navigate to="/signin" replace />
+  if (requireAdmin && !isAdmin) return <Navigate to="/dashboard" replace />
 
   return <>{children}</>
 }

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import type { Category, Listing } from '../types/database'
 
-type Tab = 'pending' | 'add'
+type Tab = 'pending' | 'edits' | 'add'
 
 type ListingWithCategories = Listing & { category_names: string[] }
 
@@ -21,8 +21,10 @@ export default function AdminPage() {
   const { signOut, user } = useAuth()
   const [tab, setTab] = useState<Tab>('pending')
   const [pending, setPending] = useState<ListingWithCategories[]>([])
+  const [pendingEdits, setPendingEdits] = useState<any[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingPending, setLoadingPending] = useState(true)
+  const [loadingEdits, setLoadingEdits] = useState(true)
   const [form, setForm] = useState(EMPTY_FORM)
   const [selectedCats, setSelectedCats] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -30,10 +32,53 @@ export default function AdminPage() {
 
   useEffect(() => {
     loadPending()
+    loadPendingEdits()
     supabase.from('categories').select('*').order('name').then(({ data }) => {
       setCategories(data ?? [])
     })
   }, [])
+
+  async function loadPendingEdits() {
+    setLoadingEdits(true)
+    const { data } = await supabase
+      .from('listing_edits')
+      .select('*, listings(name, slug, description, website, email, phone, address, city, state, logo_url, social_links, hours), users(full_name, email)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+    setPendingEdits(data ?? [])
+    setLoadingEdits(false)
+  }
+
+  async function approveEdit(edit: any) {
+    // Build the update payload from non-null edit fields
+    const update: Record<string, any> = { updated_at: new Date().toISOString() }
+    const fields = ['name', 'description', 'website', 'email', 'phone', 'address', 'city', 'postal_code', 'logo_url', 'social_links', 'hours']
+    for (const f of fields) {
+      if (edit[f] !== null && edit[f] !== undefined) update[f] = edit[f]
+    }
+
+    // Update the listing
+    await supabase.from('listings').update(update).eq('id', edit.listing_id)
+
+    // Swap categories if changed
+    if (edit.category_ids && Array.isArray(edit.category_ids)) {
+      await supabase.from('listing_categories').delete().eq('listing_id', edit.listing_id)
+      if (edit.category_ids.length > 0) {
+        await supabase.from('listing_categories').insert(
+          edit.category_ids.map((category_id: string) => ({ listing_id: edit.listing_id, category_id }))
+        )
+      }
+    }
+
+    // Mark edit approved
+    await supabase.from('listing_edits').update({ status: 'approved' }).eq('id', edit.id)
+    setPendingEdits((prev) => prev.filter((e) => e.id !== edit.id))
+  }
+
+  async function rejectEdit(id: string) {
+    await supabase.from('listing_edits').update({ status: 'rejected' }).eq('id', id)
+    setPendingEdits((prev) => prev.filter((e) => e.id !== id))
+  }
 
   async function loadPending() {
     setLoadingPending(true)
@@ -134,7 +179,7 @@ export default function AdminPage() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Tabs */}
         <div className="flex gap-2 mb-8">
-          {(['pending', 'add'] as Tab[]).map((t) => (
+          {(['pending', 'edits', 'add'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -144,7 +189,11 @@ export default function AdminPage() {
                   : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}
             >
-              {t === 'pending' ? `Pending Approval${pending.length ? ` (${pending.length})` : ''}` : 'Add Listing'}
+              {t === 'pending'
+                ? `Pending Approval${pending.length ? ` (${pending.length})` : ''}`
+                : t === 'edits'
+                ? `Pending Edits${pendingEdits.length ? ` (${pendingEdits.length})` : ''}`
+                : 'Add Listing'}
             </button>
           ))}
         </div>
@@ -200,6 +249,72 @@ export default function AdminPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Pending edits tab */}
+        {tab === 'edits' && (
+          <div>
+            {loadingEdits ? (
+              <div className="flex justify-center py-16">
+                <div className="w-7 h-7 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : pendingEdits.length === 0 ? (
+              <div className="text-center py-20 text-gray-400">
+                <p className="text-lg font-medium">No pending edits</p>
+                <p className="text-sm mt-1">All caught up!</p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {pendingEdits.map((edit) => {
+                  const listing = edit.listings
+                  const changedFields = ['name','description','website','email','phone','address','city','postal_code','logo_url','social_links','hours']
+                    .filter((f) => edit[f] !== null && edit[f] !== undefined)
+                  return (
+                    <div key={edit.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                      <div className="flex items-start justify-between gap-4 mb-4">
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{listing?.name}</h3>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            Edit by {edit.users?.full_name ?? edit.users?.email} · {new Date(edit.created_at).toLocaleDateString()}
+                          </p>
+                          {edit.category_ids && (
+                            <p className="text-xs text-blue-600 mt-1">Categories will also be updated</p>
+                          )}
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <button onClick={() => approveEdit(edit)}
+                            className="bg-green-500 hover:bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+                            Approve
+                          </button>
+                          <button onClick={() => rejectEdit(edit.id)}
+                            className="bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                      {/* Before / after diff */}
+                      <div className="space-y-2">
+                        {changedFields.map((f) => (
+                          <div key={f} className="grid grid-cols-2 gap-3 text-xs">
+                            <div className="bg-red-50 rounded-lg p-2">
+                              <p className="font-semibold text-red-600 uppercase tracking-widest mb-1">{f} (current)</p>
+                              <p className="text-gray-600 break-words">
+                                {listing?.[f] != null ? JSON.stringify(listing[f]) : <span className="italic text-gray-400">empty</span>}
+                              </p>
+                            </div>
+                            <div className="bg-green-50 rounded-lg p-2">
+                              <p className="font-semibold text-green-600 uppercase tracking-widest mb-1">{f} (proposed)</p>
+                              <p className="text-gray-600 break-words">{JSON.stringify(edit[f])}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
